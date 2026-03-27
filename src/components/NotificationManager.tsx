@@ -141,31 +141,48 @@ export function NotificationManager() {
     
     const interval = setInterval(() => {
       const now = new Date();
-      const currentHours = now.getHours().toString().padStart(2, '0');
-      const currentMinutes = now.getMinutes().toString().padStart(2, '0');
-      const timeString = `${currentHours}:${currentMinutes}`;
       const currentDay = now.getDay(); // 0-6
+      const todayStr = now.toISOString().split('T')[0];
       
       tasks.forEach(task => {
-        let isMatch = false;
+        let isTimeReached = false;
         
+        // Find the target time for today (if applicable)
         if (task.scheduleType === "custom" && task.customSchedules) {
-          isMatch = task.customSchedules.some(cs => cs.days.includes(currentDay) && cs.time === timeString);
-        } else if (task.scheduleTime === timeString) {
-          isMatch = true;
+          const match = task.customSchedules.find(cs => cs.days.includes(currentDay));
+          if (match && match.time) {
+            const [hours, mins] = match.time.split(':').map(Number);
+            const taskTime = new Date();
+            taskTime.setHours(hours, mins, 0, 0);
+            
+            if (now.getTime() >= taskTime.getTime()) {
+              isTimeReached = true;
+            }
+          }
+        } else if (task.scheduleTime) {
+          const [hours, mins] = task.scheduleTime.split(':').map(Number);
+          const taskTime = new Date();
+          taskTime.setHours(hours, mins, 0, 0);
+          
+          if (now.getTime() >= taskTime.getTime()) {
+            isTimeReached = true;
+          }
         }
 
-        if (isMatch) {
+        if (isTimeReached) {
           db.taskLogs.where({ taskId: task.id }).toArray().then(logs => {
-            const today = new Date().setHours(0, 0, 0, 0);
+            const todayStart = new Date().setHours(0, 0, 0, 0);
             const hasLogToday = logs.some(log => {
               const logDate = new Date(log.completedAt).setHours(0, 0, 0, 0);
-              return logDate === today;
+              return logDate === todayStart;
             });
             
-            const notifiedKey = `notified_${task.id}_${today}_${timeString}`;
-            if (!hasLogToday && !sessionStorage.getItem(notifiedKey)) {
-              sessionStorage.setItem(notifiedKey, "true");
+            const notifiedKey = `notified_${task.id}_${todayStr}`;
+            const hasBeenNotified = localStorage.getItem(notifiedKey);
+
+            if (!hasLogToday && !hasBeenNotified) {
+              // Mark as notified in persistent storage so a reload doesn't blast it again
+              localStorage.setItem(notifiedKey, "true");
               playBeep();
               
               if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
@@ -192,7 +209,7 @@ export function NotificationManager() {
           });
         }
       });
-    }, 30000); // Check every 30 seconds for foreground fallback
+    }, 15000); // More aggressive: check every 15 seconds
 
     return () => clearInterval(interval);
   }, [tasks, permission]);

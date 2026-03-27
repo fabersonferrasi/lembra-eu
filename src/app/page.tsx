@@ -273,7 +273,7 @@ export default function HomePage() {
       {/* Floating Action Button */}
       <button
         onClick={() => { setEditingTask(null); setShowForm(true); }}
-        className="fixed bottom-[100px] right-6 w-16 h-16 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl shadow-xl shadow-blue-500/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-30 transform rotate-3"
+        className="fixed bottom-[100px] right-6 w-[3.5rem] h-[3.5rem] bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-40"
       >
         <Plus size={32} />
       </button>
