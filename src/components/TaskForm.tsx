@@ -5,7 +5,7 @@ import { Plus, Check, X, Trash2 } from "lucide-react";
 
 interface TaskFormProps {
   initialData?: any;
-  onSubmit: (task: any) => void;
+  onSubmit: (task: any) => Promise<void> | void;
   onCancel: () => void;
 }
 
@@ -28,10 +28,14 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
   const [customSchedules, setCustomSchedules] = useState<{days: number[], time: string}[]>(
     initialData?.customSchedules || [{ days: [], time: "" }]
   );
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      alert("Por favor, preencha o campo 'O que você precisa fazer?'.");
+      return;
+    }
     if (scheduleType === "custom") {
       // Validate custom schedules
       const validSchedules = customSchedules.filter(c => c.days.length > 0 && c.time);
@@ -40,19 +44,26 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
         return;
       }
     } else if (!scheduleTime && scheduleType !== "once") {
-      alert("Informe um horário para a tarefa.");
+      alert("Informe um horário pre-agendado para a tarefa.");
       return;
     }
     
-    onSubmit({
-      ...initialData,
-      title,
-      description,
-      scheduleType,
-      scheduleTime,
-      customSchedules: scheduleType === "custom" ? customSchedules.filter(c => c.days.length > 0 && c.time) : undefined,
-      createdAt: initialData?.createdAt || new Date(),
-    });
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        ...initialData,
+        title,
+        description,
+        scheduleType,
+        scheduleTime,
+        customSchedules: scheduleType === "custom" ? customSchedules.filter(c => c.days.length > 0 && c.time) : undefined,
+        createdAt: initialData?.createdAt || new Date(),
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao salvar! Tente novamente.");
+      setIsSubmitting(false);
+    }
   };
 
   const toggleDay = (scheduleIndex: number, dayId: number) => {
@@ -103,7 +114,6 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
                 onChange={e => setTitle(e.target.value)} 
                 placeholder="Ex: Tomar remédio Ritalina" 
                 className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                required
               />
             </div>
 
@@ -198,10 +208,15 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
           <div className="mt-8">
             <button 
               type="submit" 
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+              disabled={isSubmitting}
+              className={`w-full text-white font-bold py-4 px-6 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 ${isSubmitting ? "bg-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
             >
-              {isEditing ? <Check size={20} /> : <Plus size={20} />}
-              {isEditing ? "Salvar Alterações" : "Criar Lembrete"}
+              {isSubmitting ? (
+                <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin"></div>
+              ) : (
+                isEditing ? <Check size={20} /> : <Plus size={20} />
+              )}
+              {isSubmitting ? "Salvando..." : isEditing ? "Salvar Alterações" : "Criar Lembrete"}
             </button>
           </div>
         </form>
