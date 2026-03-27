@@ -36,7 +36,7 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
       // Validate custom schedules
       const validSchedules = customSchedules.filter(c => c.days.length > 0 && c.time);
       if (validSchedules.length === 0) {
-        alert("Para o agendamento personalizado, selecione ao menos um dia e horário.");
+        alert("Para o agendamento personalizado, selecione ao menos um dia da semana e um horário específico.");
         return;
       }
     } else if (!scheduleTime && scheduleType !== "once") {
@@ -50,7 +50,7 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
       description,
       scheduleType,
       scheduleTime,
-      customSchedules: scheduleType === "custom" ? customSchedules : undefined,
+      customSchedules: scheduleType === "custom" ? customSchedules.filter(c => c.days.length > 0 && c.time) : undefined,
       createdAt: initialData?.createdAt || new Date(),
     });
   };
@@ -59,11 +59,9 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
     setCustomSchedules(prev => {
       const newSchedules = [...prev];
       const days = newSchedules[scheduleIndex].days;
-      if (days.includes(dayId)) {
-        newSchedules[scheduleIndex].days = days.filter(d => d !== dayId);
-      } else {
-        newSchedules[scheduleIndex].days = [...days, dayId];
-      }
+      const newDays = days.includes(dayId) ? days.filter(d => d !== dayId) : [...days, dayId];
+      // Force object creation for React state update
+      newSchedules[scheduleIndex] = { ...newSchedules[scheduleIndex], days: newDays };
       return newSchedules;
     });
   };
@@ -71,7 +69,7 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
   const updateTime = (scheduleIndex: number, time: string) => {
     setCustomSchedules(prev => {
       const newSchedules = [...prev];
-      newSchedules[scheduleIndex].time = time;
+      newSchedules[scheduleIndex] = { ...newSchedules[scheduleIndex], time };
       return newSchedules;
     });
   };
@@ -161,7 +159,7 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
                       </button>
                     )}
                     <label className="block text-xs font-semibold text-slate-600 mb-2">Dias da semana:</label>
-                    <div className="flex gap-1 mb-3">
+                    <div className="flex justify-between mb-3">
                       {WEEK_DAYS.map(day => {
                         const isSelected = schedule.days.includes(day.id);
                         return (
@@ -169,7 +167,7 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
                             key={day.id}
                             type="button"
                             onClick={() => toggleDay(index, day.id)}
-                            className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${isSelected ? "bg-blue-600 text-white shadow-sm" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+                            className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${isSelected ? "bg-blue-600 text-white shadow-sm scale-110" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
                           >
                             {day.label}
                           </button>
