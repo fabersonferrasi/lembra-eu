@@ -1,29 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, Check, X } from "lucide-react";
 
 interface TaskFormProps {
+  initialData?: any;
   onSubmit: (task: any) => void;
   onCancel: () => void;
 }
 
-export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [scheduleType, setScheduleType] = useState("daily");
-  const [scheduleTime, setScheduleTime] = useState("");
+export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
+  const isEditing = !!initialData;
+  const [title, setTitle] = useState(initialData?.title || "");
+  const [description, setDescription] = useState(initialData?.description || "");
+  const [scheduleType, setScheduleType] = useState(initialData?.scheduleType || "daily");
+  const [scheduleTime, setScheduleTime] = useState(initialData?.scheduleTime || "");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
     
     onSubmit({
+      ...initialData,
       title,
       description,
       scheduleType,
       scheduleTime,
-      createdAt: new Date(),
+      createdAt: initialData?.createdAt || new Date(),
     });
   };
 
@@ -31,8 +34,8 @@ export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom-4 zoom-in-95 duration-200">
         <div className="flex justify-between items-center p-6 bg-slate-50 border-b border-slate-100">
-          <h2 className="text-xl font-bold text-slate-800">Novo Lembrete</h2>
-          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 bg-white p-2 rounded-full shadow-sm">
+          <h2 className="text-xl font-bold text-slate-800">{isEditing ? "Editar Lembrete" : "Novo Lembrete"}</h2>
+          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 bg-white p-2 rounded-full shadow-sm transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -76,7 +79,7 @@ export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Horário</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Horário pre-agendado</label>
                 <input 
                   type="time" 
                   value={scheduleTime} 
@@ -92,8 +95,8 @@ export function TaskForm({ onSubmit, onCancel }: TaskFormProps) {
               type="submit" 
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
             >
-              <Plus size={20} />
-              Criar Lembrete
+              {isEditing ? <Check size={20} /> : <Plus size={20} />}
+              {isEditing ? "Salvar Alterações" : "Criar Lembrete"}
             </button>
           </div>
         </form>

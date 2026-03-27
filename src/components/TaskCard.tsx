@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Clock, CalendarDays, AlertTriangle, X } from "lucide-react";
+import { Check, Clock, CalendarDays, AlertTriangle, X, Edit2, Trash2, MoreVertical } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -14,10 +14,13 @@ interface TaskCardProps {
     scheduleTime?: string;
   };
   onComplete: (taskId: number, isDoubleConfirmed: boolean) => void;
+  onEdit?: (task: any) => void;
+  onDelete?: (taskId: number) => void;
 }
 
-export function TaskCard({ task, onComplete }: TaskCardProps) {
+export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) {
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   const handleFirstInteraction = () => {
     setShowConfirmation(true);
@@ -33,19 +36,48 @@ export function TaskCard({ task, onComplete }: TaskCardProps) {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden transition-all hover:shadow-md mb-4 relative">
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-visible transition-all hover:shadow-md mb-4 relative">
       <div className="p-5">
-        <div className="flex justify-between items-start mb-2">
-          <h3 className="text-xl font-bold text-slate-800">{task.title}</h3>
-          {task.scheduleType && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
-              {task.scheduleType === 'daily' && <Clock size={12} />}
-              {task.scheduleType !== 'daily' && <CalendarDays size={12} />}
-              {task.scheduleType === 'daily' ? 'Diário' : 
-               task.scheduleType === 'weekly' ? 'Semanal' : 
-               task.scheduleType === 'monthly' ? 'Mensal' : 'Uma vez'}
-            </span>
-          )}
+        <div className="flex justify-between items-start mb-2 relative">
+          <div className="flex-1 pr-6">
+            <h3 className="text-xl font-bold text-slate-800">{task.title}</h3>
+            {task.scheduleType && (
+              <span className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
+                {task.scheduleType === 'daily' && <Clock size={12} />}
+                {task.scheduleType !== 'daily' && <CalendarDays size={12} />}
+                {task.scheduleType === 'daily' ? 'Diário' : 
+                 task.scheduleType === 'weekly' ? 'Semanal' : 
+                 task.scheduleType === 'monthly' ? 'Mensal' : 'Uma vez'}
+              </span>
+            )}
+          </div>
+          
+          <div className="relative">
+            <button 
+              onClick={() => setShowMenu(!showMenu)} 
+              className="text-slate-400 hover:text-slate-600 p-1 rounded-full bg-slate-50 transition-colors"
+            >
+              <MoreVertical size={20} />
+            </button>
+            {showMenu && (
+              <div className="absolute right-0 top-full mt-2 w-36 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-20 animate-in fade-in zoom-in-95 duration-100">
+                <button 
+                  onClick={() => { setShowMenu(false); onEdit?.(task); }} 
+                  className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm font-medium text-slate-700 flex items-center gap-2"
+                >
+                  <Edit2 size={14} /> Editar
+                </button>
+                <button 
+                  onClick={() => { setShowMenu(false); onDelete?.(task.id); }} 
+                  className="w-full text-left px-4 py-2 hover:bg-rose-50 text-sm font-medium text-rose-600 flex items-center gap-2"
+                >
+                  <Trash2 size={14} /> Excluir
+                </button>
+              </div>
+            )}
+            {/* Click outside overlay */}
+            {showMenu && <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>}
+          </div>
         </div>
         
         {task.description && (
