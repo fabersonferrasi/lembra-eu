@@ -117,31 +117,39 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
         </button>
       </div>
 
-      {showConfirmation && (
-        <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex flex-col justify-center items-center p-6 text-center animate-in fade-in zoom-in duration-200 rounded-2xl">
-          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mb-4 animate-bounce">
-            <AlertTriangle size={32} />
-          </div>
-          <h4 className="text-xl font-black text-slate-800 mb-2">Você tem CERTEZA?</h4>
-          <p className="text-slate-600 mb-6 text-sm">
-            Temos TDAH e as vezes apenas <strong>pensamos</strong> que fizemos algo. Você realmente executou essa ação no mundo real?
-          </p>
-          
-          <div className="flex flex-col gap-3 w-full">
-            <button 
-              onClick={handleDoubleConfirm}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3.5 px-6 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
-            >
-              <Check size={20} />
-              Sim, eu realmente fiz agora!
-            </button>
-            <button 
-              onClick={handleCancel}
-              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 px-6 rounded-xl transition-all flex items-center justify-center gap-2"
-            >
-              <X size={20} />
-              Ops, ainda não fiz
-            </button>
+        {showConfirmation && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={handleCancel}></div>
+          <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-6 relative z-10 animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-300">
+            <div className="absolute -top-12 left-1/2 -translate-x-1/2">
+              <div className="w-24 h-24 bg-rose-500 rounded-full border-8 border-white flex items-center justify-center text-white shadow-lg animate-bounce duration-500">
+                <AlertTriangle size={40} className="drop-shadow-md" />
+              </div>
+            </div>
+            
+            <div className="pt-10 pb-4 text-center">
+              <h4 className="text-2xl font-black text-slate-800 tracking-tight mb-2">Atenção!</h4>
+              <p className="text-slate-500 mb-6 text-base leading-relaxed">
+                Temos TDAH e as vezes apenas <strong className="text-slate-800">pensamos</strong> que fizemos algo. Você <b>realmente executou</b> essa ação presencialmente agora?
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={handleDoubleConfirm}
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-black py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-sm text-lg"
+                >
+                  <Check size={24} />
+                  Sim, eu já fiz!
+                </button>
+                <button 
+                  onClick={handleCancel}
+                  className="w-full bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-600 font-bold py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-2 text-base"
+                >
+                  <X size={20} />
+                  Ops, deixei pra depois
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
