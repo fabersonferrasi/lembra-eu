@@ -74,7 +74,7 @@ export function NotificationManager() {
                     body: task.description || "É hora de executar essa tarefa!",
                     icon: "/icon-192x192.png",
                     vibrate: [200, 100, 200, 100, 200]
-                  });
+                  } as any);
                 }).catch(() => {
                   new Notification(`Lembrete: ${task.title}`, { body: task.description });
                 });
