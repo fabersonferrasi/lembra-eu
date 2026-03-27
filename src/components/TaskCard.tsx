@@ -39,13 +39,13 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-visible transition-all hover:shadow-md mb-4 relative">
+    <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-lg shadow-violet-500/5 border border-white/60 overflow-visible transition-all hover:shadow-xl hover:-translate-y-1 mb-5 relative group">
       <div className="p-5">
         <div className="flex justify-between items-start mb-2 relative">
           <div className="flex-1 pr-6">
             <h3 className="text-xl font-bold text-slate-800">{task.title}</h3>
             {task.scheduleType && (
-              <span className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
+              <span className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full text-xs font-bold bg-violet-100/80 text-violet-700 backdrop-blur-sm border border-violet-200/50">
                 {task.scheduleType === 'daily' && <Clock size={12} />}
                 {task.scheduleType !== 'daily' && task.scheduleType !== 'custom' && <CalendarDays size={12} />}
                 {task.scheduleType === 'custom' && <Settings size={12} />}
@@ -110,17 +110,17 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
 
         <button 
           onClick={handleFirstInteraction}
-          className="w-full mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3.5 px-6 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+          className="w-full mt-3 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-orange-500 hover:opacity-90 text-white font-bold py-3.5 px-6 rounded-2xl shadow-md shadow-fuchsia-500/20 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
         >
           <Check size={20} />
           Marcar como Feito
         </button>
       </div>
 
-        {showConfirmation && (
+      {showConfirmation && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={handleCancel}></div>
-          <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-6 relative z-10 animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-300">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md animate-in fade-in duration-200" onClick={handleCancel}></div>
+          <div className="bg-white/90 backdrop-blur-3xl border border-white/50 w-full max-w-sm rounded-[2.5rem] shadow-2xl p-6 relative z-10 animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-300">
             <div className="absolute -top-12 left-1/2 -translate-x-1/2">
               <div className="w-24 h-24 bg-rose-500 rounded-full border-8 border-white flex items-center justify-center text-white shadow-lg animate-bounce duration-500">
                 <AlertTriangle size={40} className="drop-shadow-md" />

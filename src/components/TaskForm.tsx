@@ -95,11 +95,11 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-4 zoom-in-95 duration-200">
-        <div className="flex justify-between items-center p-6 bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
-          <h2 className="text-xl font-bold text-slate-800">{isEditing ? "Editar Lembrete" : "Novo Lembrete"}</h2>
-          <button type="button" onClick={onCancel} className="text-slate-400 hover:text-slate-600 bg-white p-2 rounded-full shadow-sm transition-colors">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div className="bg-white/90 backdrop-blur-3xl border border-white/50 rounded-3xl shadow-2xl shadow-violet-900/20 w-full max-w-md max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-4 zoom-in-95 duration-200">
+        <div className="flex justify-between items-center p-6 bg-white/50 border-b border-indigo-50 sticky top-0 z-10 backdrop-blur-sm">
+          <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-600 to-fuchsia-600">{isEditing ? "Editar Lembrete" : "Novo Lembrete"}</h2>
+          <button type="button" onClick={onCancel} className="text-slate-400 hover:text-rose-500 bg-white shadow-sm p-2 rounded-full transition-all hover:scale-105 active:scale-95">
             <X size={20} />
           </button>
         </div>
@@ -209,7 +209,7 @@ export function TaskForm({ initialData, onSubmit, onCancel }: TaskFormProps) {
             <button 
               type="submit" 
               disabled={isSubmitting}
-              className={`w-full text-white font-bold py-4 px-6 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 ${isSubmitting ? "bg-slate-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
+              className={`w-full text-white font-bold py-4 px-6 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 active:scale-[0.98] ${isSubmitting ? "bg-slate-400 cursor-not-allowed" : "bg-gradient-to-r from-violet-600 via-fuchsia-600 to-orange-500 hover:opacity-90 shadow-fuchsia-500/30"}`}
             >
               {isSubmitting ? (
                 <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin"></div>

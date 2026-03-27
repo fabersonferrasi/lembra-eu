@@ -2,14 +2,15 @@ import type { NextConfig } from "next";
 
 const withPWA = require("next-pwa")({
   dest: "public",
-  disable: process.env.NODE_ENV === "development",
+  disable: false, // Force SW on dev to test Background Tasks
   register: true,
   skipWaiting: true,
   customWorkerDir: "worker"
 });
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  output: 'export',
+  images: { unoptimized: true },
 };
 
 export default withPWA(nextConfig);

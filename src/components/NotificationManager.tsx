@@ -5,6 +5,17 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { BellRing, Info } from "lucide-react";
 
+// Helper para importar capacitor apenas no client side
+const getCapacitor = async () => {
+  try {
+    const { Capacitor } = await import('@capacitor/core');
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    return { Capacitor, LocalNotifications };
+  } catch (e) {
+    return null;
+  }
+};
+
 export function NotificationManager() {
   const [permission, setPermission] = useState<string>("granted");
   const [showIosWarning, setShowIosWarning] = useState(false);
@@ -54,28 +65,57 @@ export function NotificationManager() {
     }
   };
 
-  // 1. Experimental background OS scheduling for PWA (Android / Chrome 107+)
+  // 1. Experimental background OS scheduling for PWA & CAPACITOR NATIVE
   const scheduleBackgroundNotifications = async () => {
-    if (!("serviceWorker" in navigator)) return;
-    
-    // Check if OS supports scheduling notifications (Trigger API)
-    if (!('showTrigger' in Notification.prototype)) return;
-
     try {
-      const reg = await navigator.serviceWorker.ready;
       if (!tasks) return;
-
+      
+      const cap = await getCapacitor();
+      const isNative = cap?.Capacitor.isNativePlatform();
+      
       const now = new Date();
       const today = now.getDay();
       
-      // Get all scheduled notifications to avoid duplicates (if API supports getting them)
-      let existingTags = new Set<string>();
-      if (reg.getNotifications) {
-        const activeNotes = await reg.getNotifications();
-        activeNotes.forEach(n => existingTags.add(n.tag));
+      // Request permission natively if needed
+      if (isNative && cap) {
+         let permStatus = await cap.LocalNotifications.checkPermissions();
+         if (permStatus.display !== 'granted') {
+             permStatus = await cap.LocalNotifications.requestPermissions();
+         }
+         if (permStatus.display !== 'granted') return;
       }
 
-      tasks.forEach(task => {
+      if (!isNative && !("serviceWorker" in navigator)) return;
+      
+      // For PWA Background fallback
+      let reg: any = null;
+      let existingTags = new Set<string>();
+      if (!isNative && 'serviceWorker' in navigator) {
+         reg = await navigator.serviceWorker.ready;
+         if (reg.getNotifications) {
+           const activeNotes = await reg.getNotifications();
+           activeNotes.forEach((n: any) => existingTags.add(n.tag));
+         }
+      }
+
+      // Try registering periodic sync
+      if ('periodicSync' in reg) {
+        try {
+          const status = await navigator.permissions.query({
+            name: 'periodic-background-sync' as any,
+          });
+          if (status.state === 'granted') {
+            await (reg as any).periodicSync.register('check-tasks', {
+              minInterval: 60 * 60 * 1000, // 1 hour minimum
+            });
+            console.log('Periodic sync registered!');
+          }
+        } catch (e) {
+          console.error('Periodic sync could not be registered!', e);
+        }
+      }
+
+      tasks.forEach(async task => {
         if (!task.scheduleTime && task.scheduleType !== "custom") return;
 
         // Determine if task needs scheduling today
@@ -101,28 +141,47 @@ export function NotificationManager() {
           if (scheduleDate.getTime() > now.getTime()) {
             const tag = `task_${task.id}_${scheduleDate.getTime()}`;
             
-            // Check if already scheduled locally
-            if (!scheduledTasksRef.current.has(tag) && !existingTags.has(tag)) {
-              console.log(`Scheduling OS Notification for: ${task.title} at ${scheduleDate.toLocaleTimeString()}`);
-              
-              const options: any = {
-                body: task.description || "É hora de executar essa tarefa!",
-                icon: "/icon-192x192.png",
-                vibrate: [200, 100, 200, 100, 200],
-                tag: tag, // Prevent duplicates
-                data: { taskId: task.id },
-                actions: [
-                  { action: 'confirm', title: '✓ Já fiz!' },
-                  { action: 'close', title: 'X Depois' }
-                ],
-                showTrigger: new (window as any).TimestampTrigger(scheduleDate.getTime())
-              };
-
-              reg.showNotification(`Lembrete: ${task.title}`, options)
-                .then(() => {
-                   scheduledTasksRef.current.add(tag);
-                })
-                .catch(e => console.error("Trigger API failed", e));
+            if (isNative && cap) {
+               // NATIVE ANDROID SCHEDULING (100% RELIABLE)
+               if (!scheduledTasksRef.current.has(tag)) {
+                  console.log(`Scheduling NATIVE Android Notification for: ${task.title} at ${scheduleDate.toLocaleString()}`);
+                  await cap.LocalNotifications.schedule({
+                    notifications: [
+                      {
+                        title: `Lembrete: ${task.title}`,
+                        body: task.description || "É hora de executar essa tarefa!",
+                        id: task.id || new Date().getTime(),
+                        schedule: { at: scheduleDate },
+                        actionTypeId: "",
+                        extra: { taskId: task.id }
+                      }
+                    ]
+                  });
+                  scheduledTasksRef.current.add(tag);
+               }
+            } else if (reg && ('showTrigger' in Notification.prototype)) {
+               // PWA SCHEDULING FALLBACK
+               if (!scheduledTasksRef.current.has(tag) && !existingTags.has(tag)) {
+                 console.log(`Scheduling PWA Trigger Notification for: ${task.title} at ${scheduleDate.toLocaleTimeString()}`);
+                 const options: any = {
+                   body: task.description || "É hora de executar essa tarefa!",
+                   icon: "/icon-192x192.png",
+                   vibrate: [200, 100, 200, 100, 200],
+                   tag: tag,
+                   data: { taskId: task.id },
+                   actions: [
+                     { action: 'confirm', title: '✓ Já fiz!' },
+                     { action: 'close', title: 'X Depois' }
+                   ],
+                   showTrigger: new (window as any).TimestampTrigger(scheduleDate.getTime())
+                 };
+   
+                 reg.showNotification(`Lembrete: ${task.title}`, options)
+                   .then(() => {
+                      scheduledTasksRef.current.add(tag);
+                   })
+                   .catch((e: Error) => console.error("Trigger API failed", e));
+               }
             }
           }
         }
@@ -185,26 +244,44 @@ export function NotificationManager() {
               localStorage.setItem(notifiedKey, "true");
               playBeep();
               
-              if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
-                navigator.serviceWorker.ready.then(reg => {
-                  reg.showNotification(`Lembrete: ${task.title}`, {
-                    body: task.description || "É hora de executar essa tarefa!",
-                    icon: "/icon-192x192.png",
-                    vibrate: [200, 100, 200, 100, 200],
-                    data: { taskId: task.id },
-                    actions: [
-                      { action: 'confirm', title: '✓ Já fiz!' },
-                      { action: 'close', title: 'X Depois' }
-                    ]
-                  } as any);
-                }).catch(() => {
-                  new Notification(`Lembrete: ${task.title}`, { body: task.description });
-                });
-              } else {
-                if (!('showTrigger' in Notification.prototype)) {
-                   new Notification(`Lembrete: ${task.title}`, { body: task.description });
+              getCapacitor().then(cap => {
+                const isNative = cap?.Capacitor.isNativePlatform();
+                
+                if (isNative && cap) {
+                   // Native foreground popup alert
+                   cap.LocalNotifications.schedule({
+                     notifications: [
+                       {
+                         title: `Lembrete: ${task.title}`,
+                         body: task.description || "É hora de executar essa tarefa!",
+                         id: new Date().getTime(),
+                         schedule: { at: new Date() },
+                         extra: { taskId: task.id }
+                       }
+                     ]
+                   });
+                } else {
+                   // PWA Active notification
+                   if ("serviceWorker" in navigator) {
+                     navigator.serviceWorker.ready.then(r => {
+                       r.showNotification(`Lembrete: ${task.title}`, {
+                         body: task.description || "É hora de executar essa tarefa!",
+                         icon: "/icon-192x192.png",
+                         vibrate: [200, 100, 200, 100, 200],
+                         data: { taskId: task.id },
+                         actions: [
+                           { action: 'confirm', title: '✓ Já fiz!' },
+                           { action: 'close', title: 'X Depois' }
+                         ]
+                       } as any).catch(() => {
+                         new Notification(`Lembrete: ${task.title}`, { body: task.description });
+                       });
+                     });
+                   } else {
+                     new Notification(`Lembrete: ${task.title}`, { body: task.description });
+                   }
                 }
-              }
+              });
             }
           });
         }
