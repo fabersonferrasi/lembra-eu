@@ -4,10 +4,11 @@ export interface Task {
   id?: number;
   title: string;
   description?: string;
-  scheduleType: 'daily' | 'weekly' | 'monthly' | 'once';
+  scheduleType: 'daily' | 'weekly' | 'monthly' | 'once' | 'custom';
   scheduleTime?: string; // HH:mm format
   daysOfWeek?: number[]; // 0-6 for weekly
   dayOfMonth?: number; // 1-31 for monthly
+  customSchedules?: { days: number[]; time: string }[];
   createdAt: Date;
 }
 

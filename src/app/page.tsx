@@ -9,7 +9,7 @@ import { NotificationManager } from "@/components/NotificationManager";
 import { Plus, CheckCircle2, ListFilter } from "lucide-react";
 import Link from "next/link";
 
-type ViewType = "today" | "daily" | "weekly" | "monthly";
+type ViewType = "today" | "daily" | "weekly" | "monthly" | "custom";
 
 export default function HomePage() {
   const [showForm, setShowForm] = useState(false);
@@ -21,11 +21,29 @@ export default function HomePage() {
 
   // Filter tasks to show those that need action today
   const pendingForToday = tasks?.filter(task => {
+    const now = new Date();
     const today = new Date().setHours(0, 0, 0, 0);
+    const dayOfWeek = now.getDay();
+    
+    // Determine if the task is scheduled for today
+    let scheduleValidForToday = false;
+    
+    if (task.scheduleType === "daily") {
+      scheduleValidForToday = true;
+    } else if (task.scheduleType === "custom" && task.customSchedules) {
+      scheduleValidForToday = task.customSchedules.some(cs => cs.days.includes(dayOfWeek));
+    } else if (task.scheduleType === "weekly" || task.scheduleType === "monthly" || task.scheduleType === "once") {
+      scheduleValidForToday = true; // Fallback: show these unless completed
+    }
+    
+    if (!scheduleValidForToday) return false;
+
+    // Check if it's already completed today
     const hasLogToday = taskLogs?.some(log => {
       const logDate = new Date(log.completedAt).setHours(0, 0, 0, 0);
       return log.taskId === task.id && logDate === today;
     });
+
     return !hasLogToday;
   });
 
@@ -88,28 +106,34 @@ export default function HomePage() {
         </div>
 
         {/* View Tabs */}
-        <div className="flex bg-slate-100 p-1.5 rounded-2xl overflow-x-auto scroolbar-hide snap-x">
+        <div className="flex bg-slate-100 p-1.5 rounded-2xl overflow-x-auto scrollbar-hide snap-x gap-1">
           <button 
             onClick={() => setActiveView("today")}
-            className={`flex-1 min-w-[80px] text-sm font-bold py-2 px-3 rounded-xl transition-all ${activeView === "today" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
+            className={`flex-none min-w-[80px] text-sm font-bold py-2 px-3 rounded-xl transition-all ${activeView === "today" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:bg-slate-200"}`}
           >
             Para Hoje
           </button>
           <button 
             onClick={() => setActiveView("daily")}
-            className={`flex-1 min-w-[80px] text-sm font-bold py-2 px-3 rounded-xl transition-all ${activeView === "daily" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
+            className={`flex-none min-w-[80px] text-sm font-bold py-2 px-3 rounded-xl transition-all ${activeView === "daily" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:bg-slate-200"}`}
           >
             Diárias
           </button>
           <button 
+            onClick={() => setActiveView("custom")}
+            className={`flex-none min-w-[80px] text-sm font-bold py-2 px-3 rounded-xl transition-all ${activeView === "custom" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:bg-slate-200"}`}
+          >
+            Personalizadas
+          </button>
+          <button 
             onClick={() => setActiveView("weekly")}
-            className={`flex-1 min-w-[80px] text-sm font-bold py-2 px-3 rounded-xl transition-all ${activeView === "weekly" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
+            className={`flex-none min-w-[80px] text-sm font-bold py-2 px-3 rounded-xl transition-all ${activeView === "weekly" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:bg-slate-200"}`}
           >
             Semanais
           </button>
           <button 
             onClick={() => setActiveView("monthly")}
-            className={`flex-1 min-w-[80px] text-sm font-bold py-2 px-3 rounded-xl transition-all ${activeView === "monthly" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
+            className={`flex-none min-w-[80px] text-sm font-bold py-2 px-3 rounded-xl transition-all ${activeView === "monthly" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:bg-slate-200"}`}
           >
             Mensais
           </button>
@@ -122,7 +146,7 @@ export default function HomePage() {
             <ListFilter size={18} className="text-slate-400" />
             {activeView === "today" ? "Sua fila de hoje" : "Gerenciar Tarefas"}
           </span>
-          <span className="bg-blue-100 text-blue-700 py-1 px-3 rounded-full text-sm">
+          <span className="bg-blue-100 text-blue-700 py-1 px-3 rounded-full text-sm font-bold">
             {visibleTasks?.length || 0}
           </span>
         </h2>

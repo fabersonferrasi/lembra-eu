@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Clock, CalendarDays, AlertTriangle, X, Edit2, Trash2, MoreVertical } from "lucide-react";
+import { Check, Clock, CalendarDays, AlertTriangle, X, Edit2, Trash2, MoreVertical, Settings } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -12,11 +12,14 @@ interface TaskCardProps {
     description?: string;
     scheduleType: string;
     scheduleTime?: string;
+    customSchedules?: { days: number[]; time: string }[];
   };
   onComplete: (taskId: number, isDoubleConfirmed: boolean) => void;
   onEdit?: (task: any) => void;
   onDelete?: (taskId: number) => void;
 }
+
+const DAYS_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) {
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -44,10 +47,13 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
             {task.scheduleType && (
               <span className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
                 {task.scheduleType === 'daily' && <Clock size={12} />}
-                {task.scheduleType !== 'daily' && <CalendarDays size={12} />}
+                {task.scheduleType !== 'daily' && task.scheduleType !== 'custom' && <CalendarDays size={12} />}
+                {task.scheduleType === 'custom' && <Settings size={12} />}
+                
                 {task.scheduleType === 'daily' ? 'Diário' : 
                  task.scheduleType === 'weekly' ? 'Semanal' : 
-                 task.scheduleType === 'monthly' ? 'Mensal' : 'Uma vez'}
+                 task.scheduleType === 'monthly' ? 'Mensal' : 
+                 task.scheduleType === 'custom' ? 'Personalizado' : 'Uma vez'}
               </span>
             )}
           </div>
@@ -86,12 +92,21 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
           </p>
         )}
 
-        {task.scheduleTime && (
-            <div className="flex items-center gap-2 text-sm text-slate-500 font-medium mb-4">
-              <Clock size={16} className="text-blue-500" />
-              <span>Horário: {task.scheduleTime}</span>
-            </div>
-        )}
+        {task.scheduleType === 'custom' && task.customSchedules ? (
+          <div className="flex flex-col gap-1.5 mb-4">
+            {task.customSchedules.map((cs, idx) => (
+              <div key={idx} className="flex items-center gap-2 text-sm text-slate-500 font-medium bg-slate-50 p-2 rounded-lg">
+                <Clock size={14} className="text-blue-500" />
+                <span>{cs.days.map(d => DAYS_SHORT[d]).join(', ')} às {cs.time}</span>
+              </div>
+            ))}
+          </div>
+        ) : task.scheduleTime ? (
+          <div className="flex items-center gap-2 text-sm text-slate-500 font-medium mb-4 bg-slate-50 p-2 rounded-lg w-fit">
+            <Clock size={14} className="text-blue-500" />
+            <span>Horário: {task.scheduleTime}</span>
+          </div>
+        ) : null}
 
         <button 
           onClick={handleFirstInteraction}
@@ -103,13 +118,13 @@ export function TaskCard({ task, onComplete, onEdit, onDelete }: TaskCardProps) 
       </div>
 
       {showConfirmation && (
-        <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex flex-col justify-center items-center p-6 text-center animate-in fade-in zoom-in duration-200">
+        <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex flex-col justify-center items-center p-6 text-center animate-in fade-in zoom-in duration-200 rounded-2xl">
           <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mb-4 animate-bounce">
             <AlertTriangle size={32} />
           </div>
           <h4 className="text-xl font-black text-slate-800 mb-2">Você tem CERTEZA?</h4>
           <p className="text-slate-600 mb-6 text-sm">
-            Temos TDAH e as vezes apenas <strong>pensamos</strong> que fizemos algo. Você realmente executou essa ação mundo real?
+            Temos TDAH e as vezes apenas <strong>pensamos</strong> que fizemos algo. Você realmente executou essa ação no mundo real?
           </p>
           
           <div className="flex flex-col gap-3 w-full">

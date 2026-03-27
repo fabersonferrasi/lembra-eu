@@ -53,9 +53,18 @@ export function NotificationManager() {
       const currentHours = now.getHours().toString().padStart(2, '0');
       const currentMinutes = now.getMinutes().toString().padStart(2, '0');
       const timeString = `${currentHours}:${currentMinutes}`;
+      const currentDay = now.getDay(); // 0-6
       
       tasks.forEach(task => {
-        if (task.scheduleTime === timeString) {
+        let isMatch = false;
+        
+        if (task.scheduleType === "custom" && task.customSchedules) {
+          isMatch = task.customSchedules.some(cs => cs.days.includes(currentDay) && cs.time === timeString);
+        } else if (task.scheduleTime === timeString) {
+          isMatch = true;
+        }
+
+        if (isMatch) {
           db.taskLogs.where({ taskId: task.id }).toArray().then(logs => {
             const today = new Date().setHours(0, 0, 0, 0);
             const hasLogToday = logs.some(log => {
@@ -63,7 +72,7 @@ export function NotificationManager() {
               return logDate === today;
             });
             
-            const notifiedKey = `notified_${task.id}_${today}`;
+            const notifiedKey = `notified_${task.id}_${today}_${timeString}`;
             if (!hasLogToday && !sessionStorage.getItem(notifiedKey)) {
               sessionStorage.setItem(notifiedKey, "true");
               playBeep();
