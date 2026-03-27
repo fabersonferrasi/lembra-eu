@@ -87,6 +87,34 @@ export default function HomePage() {
 
   const visibleTasks = getVisibleTasks();
 
+  useEffect(() => {
+    if (typeof window !== "undefined" && tasks) {
+      const params = new URLSearchParams(window.location.search);
+      const confirmTaskId = params.get("confirmTask");
+      
+      if (confirmTaskId) {
+        const tId = Number(confirmTaskId);
+        const task = tasks.find(t => t.id === tId);
+        
+        if (task) {
+          // Verify if already logged today
+          const today = new Date().setHours(0, 0, 0, 0);
+          const hasLogToday = taskLogs?.some(log => {
+            const logDate = new Date(log.completedAt).setHours(0, 0, 0, 0);
+            return log.taskId === task.id && logDate === today;
+          });
+
+          if (!hasLogToday) {
+            handleCompleteTask(tId, true);
+            alert(`Fantástico! A tarefa "${task.title}" foi confirmada pelo celular.`);
+          }
+          
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    }
+  }, [tasks, taskLogs]);
+
   return (
     <main className="min-h-screen bg-slate-50 pb-24">
       <NotificationManager />

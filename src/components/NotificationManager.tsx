@@ -82,7 +82,12 @@ export function NotificationManager() {
                   reg.showNotification(`Lembrete: ${task.title}`, {
                     body: task.description || "É hora de executar essa tarefa!",
                     icon: "/icon-192x192.png",
-                    vibrate: [200, 100, 200, 100, 200]
+                    vibrate: [200, 100, 200, 100, 200],
+                    data: { taskId: task.id },
+                    actions: [
+                      { action: 'confirm', title: '✓ Já fiz!' },
+                      { action: 'close', title: 'X Depois' }
+                    ]
                   } as any);
                 }).catch(() => {
                   new Notification(`Lembrete: ${task.title}`, { body: task.description });
