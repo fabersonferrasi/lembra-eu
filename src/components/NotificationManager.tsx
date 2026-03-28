@@ -1,324 +1,372 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
-import { BellRing, Info } from "lucide-react";
+import { useEffect, useState } from "react";
 
-// Helper para importar capacitor apenas no client side
-const getCapacitor = async () => {
-  try {
-    const { Capacitor } = await import('@capacitor/core');
-    const { LocalNotifications } = await import('@capacitor/local-notifications');
-    return { Capacitor, LocalNotifications };
-  } catch (e) {
-    return null;
-  }
+import { useLiveQuery } from "dexie-react-hooks";
+import { BellRing, ShieldAlert, Zap } from "lucide-react";
+
+import { db, type TaskLog } from "@/lib/db";
+import { getTaskTimesForDate, taskHasSchedule } from "@/lib/reminderRules";
+import {
+  checkNotificationPermission,
+  ensureNativeNotificationSetup,
+  openExactAlarmSettings,
+  requestNotificationPermission,
+  scheduleTaskNotifications,
+  testNotification,
+} from "@/lib/scheduling";
+
+type PermissionState = "loading" | "granted" | "denied" | "prompt";
+type AndroidSettingsPlugin = {
+  openBatterySettings: () => Promise<void>;
+  checkBatteryOptimization: () => Promise<{ ignoring: boolean }>;
 };
 
-export function NotificationManager() {
-  const [permission, setPermission] = useState<string>("granted");
-  const [showIosWarning, setShowIosWarning] = useState(false);
-  
-  // Track Scheduled IDs to prevent overriding constantly
-  const scheduledTasksRef = useRef<Set<string>>(new Set());
+function getCompletionState(taskId: number, logs: TaskLog[]) {
+  const completedOccurrenceKeys = new Set<string>();
+  const legacyCompletedDates = new Set<string>();
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      setPermission(Notification.permission);
-      
-      // Simple iOS Safari check
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-      if (isIOS && !('showTrigger' in Notification.prototype)) {
-        setShowIosWarning(true);
+  logs
+    .filter((log) => log.taskId === taskId)
+    .forEach((log) => {
+      if (log.occurrenceKey) {
+        completedOccurrenceKeys.add(log.occurrenceKey);
+        return;
       }
-    }
-  }, []);
+
+      if (log.occurrenceDate) {
+        legacyCompletedDates.add(log.occurrenceDate);
+        return;
+      }
+
+      const completedAt = new Date(log.completedAt);
+      const year = completedAt.getFullYear();
+      const month = String(completedAt.getMonth() + 1).padStart(2, "0");
+      const day = String(completedAt.getDate()).padStart(2, "0");
+      legacyCompletedDates.add(`${year}-${month}-${day}`);
+    });
+
+  return {
+    completedOccurrenceKeys: [...completedOccurrenceKeys],
+    legacyCompletedDates: [...legacyCompletedDates],
+  };
+}
+
+async function getAndroidSettings() {
+  const { registerPlugin } = await import("@capacitor/core");
+  return registerPlugin<AndroidSettingsPlugin>("AndroidSettings");
+}
+
+export function NotificationManager() {
+  const [permState, setPermState] = useState<PermissionState>("loading");
+  const [exactAlarm, setExactAlarm] = useState(true);
+  const [batterySafe, setBatterySafe] = useState(true);
+  const [isNative, setIsNative] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
 
   const tasks = useLiveQuery(() => db.tasks.toArray(), []);
-  
-  const playBeep = () => {
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
-      gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      
-      oscillator.start();
-      oscillator.stop(audioCtx.currentTime + 0.5);
-    } catch (e) {
-      console.error("Audio API not supported", e);
-    }
-  };
+  const taskLogs = useLiveQuery(() => db.taskLogs.toArray(), []);
 
-  const requestPermission = async () => {
-    if ("Notification" in window) {
-      const p = await Notification.requestPermission();
-      setPermission(p);
-    }
-  };
-
-  // 1. Experimental background OS scheduling for PWA & CAPACITOR NATIVE
-  const scheduleBackgroundNotifications = async () => {
-    try {
-      if (!tasks) return;
-      
-      const cap = await getCapacitor();
-      const isNative = cap?.Capacitor.isNativePlatform();
-      
-      const now = new Date();
-      const today = now.getDay();
-      
-      // Request permission natively if needed
-      if (isNative && cap) {
-         let permStatus = await cap.LocalNotifications.checkPermissions();
-         if (permStatus.display !== 'granted') {
-             permStatus = await cap.LocalNotifications.requestPermissions();
-         }
-         if (permStatus.display !== 'granted') return;
-      }
-
-      if (!isNative && !("serviceWorker" in navigator)) return;
-      
-      // For PWA Background fallback
-      let reg: any = null;
-      let existingTags = new Set<string>();
-      if (!isNative && 'serviceWorker' in navigator) {
-         reg = await navigator.serviceWorker.ready;
-         if (reg.getNotifications) {
-           const activeNotes = await reg.getNotifications();
-           activeNotes.forEach((n: any) => existingTags.add(n.tag));
-         }
-      }
-
-      // Try registering periodic sync
-      if ('periodicSync' in reg) {
-        try {
-          const status = await navigator.permissions.query({
-            name: 'periodic-background-sync' as any,
-          });
-          if (status.state === 'granted') {
-            await (reg as any).periodicSync.register('check-tasks', {
-              minInterval: 60 * 60 * 1000, // 1 hour minimum
-            });
-            console.log('Periodic sync registered!');
-          }
-        } catch (e) {
-          console.error('Periodic sync could not be registered!', e);
-        }
-      }
-
-      tasks.forEach(async task => {
-        if (!task.scheduleTime && task.scheduleType !== "custom") return;
-
-        // Determine if task needs scheduling today
-        let hours = 0, mins = 0;
-        let shouldScheduleToday = false;
-        
-        if (task.scheduleType === "custom" && task.customSchedules) {
-          const match = task.customSchedules.find(cs => cs.days.includes(today));
-          if (match && match.time) {
-            shouldScheduleToday = true;
-            [hours, mins] = match.time.split(':').map(Number);
-          }
-        } else if (task.scheduleTime) {
-          shouldScheduleToday = true;
-          [hours, mins] = task.scheduleTime.split(':').map(Number);
-        }
-
-        if (shouldScheduleToday) {
-          const scheduleDate = new Date();
-          scheduleDate.setHours(hours, mins, 0, 0);
-
-          // Only schedule if it's in the future
-          if (scheduleDate.getTime() > now.getTime()) {
-            const tag = `task_${task.id}_${scheduleDate.getTime()}`;
-            
-            if (isNative && cap) {
-               // NATIVE ANDROID SCHEDULING (100% RELIABLE)
-               if (!scheduledTasksRef.current.has(tag)) {
-                  console.log(`Scheduling NATIVE Android Notification for: ${task.title} at ${scheduleDate.toLocaleString()}`);
-                  await cap.LocalNotifications.schedule({
-                    notifications: [
-                      {
-                        title: `Lembrete: ${task.title}`,
-                        body: task.description || "É hora de executar essa tarefa!",
-                        id: task.id || new Date().getTime(),
-                        schedule: { at: scheduleDate },
-                        actionTypeId: "",
-                        extra: { taskId: task.id }
-                      }
-                    ]
-                  });
-                  scheduledTasksRef.current.add(tag);
-               }
-            } else if (reg && ('showTrigger' in Notification.prototype)) {
-               // PWA SCHEDULING FALLBACK
-               if (!scheduledTasksRef.current.has(tag) && !existingTags.has(tag)) {
-                 console.log(`Scheduling PWA Trigger Notification for: ${task.title} at ${scheduleDate.toLocaleTimeString()}`);
-                 const options: any = {
-                   body: task.description || "É hora de executar essa tarefa!",
-                   icon: "/icon-192x192.png",
-                   vibrate: [200, 100, 200, 100, 200],
-                   tag: tag,
-                   data: { taskId: task.id },
-                   actions: [
-                     { action: 'confirm', title: '✓ Já fiz!' },
-                     { action: 'close', title: 'X Depois' }
-                   ],
-                   showTrigger: new (window as any).TimestampTrigger(scheduleDate.getTime())
-                 };
-   
-                 reg.showNotification(`Lembrete: ${task.title}`, options)
-                   .then(() => {
-                      scheduledTasksRef.current.add(tag);
-                   })
-                   .catch((e: Error) => console.error("Trigger API failed", e));
-               }
-            }
-          }
-        }
-      });
-    } catch (e) {
-      console.log("Could not schedule background notification", e);
-    }
-  };
-
-  // 2. Active foreground check (Fallback for iOS and desktop browsers)
   useEffect(() => {
-    if (!tasks || permission !== "granted") return;
-    
-    // Immediately attempt to schedule OS background triggers
-    scheduleBackgroundNotifications();
-    
+    const init = async () => {
+      try {
+        const { Capacitor } = await import("@capacitor/core");
+        const native = Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+        setIsNative(native);
+
+        if (native) {
+          await ensureNativeNotificationSetup();
+          const permission = await checkNotificationPermission();
+          setPermState(permission.granted ? "granted" : "prompt");
+          setExactAlarm(permission.canExactAlarm);
+
+          try {
+            const settings = await getAndroidSettings();
+            const battery = await settings.checkBatteryOptimization();
+            setBatterySafe(battery.ignoring);
+          } catch {
+            setBatterySafe(true);
+          }
+          return;
+        }
+      } catch {
+        // Browser fallback below.
+      }
+
+      if (typeof window !== "undefined" && "Notification" in window) {
+        const permission = Notification.permission;
+        setPermState(
+          permission === "granted"
+            ? "granted"
+            : permission === "denied"
+              ? "denied"
+              : "prompt",
+        );
+      } else {
+        setPermState("granted");
+      }
+    };
+
+    void init();
+  }, []);
+
+  useEffect(() => {
+    if (!tasks || !taskLogs || !isNative || permState !== "granted") {
+      return;
+    }
+
+    const syncAndReschedule = async () => {
+      for (const task of tasks) {
+        if (!task.id || !taskHasSchedule(task)) {
+          continue;
+        }
+
+        try {
+          const completionState = getCompletionState(task.id, taskLogs);
+          await scheduleTaskNotifications(task, completionState);
+        } catch (error) {
+          console.warn(`[NotifMgr] Failed to schedule task ${task.id}:`, error);
+        }
+      }
+    };
+
+    void syncAndReschedule();
+
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      void (async () => {
+        const permission = await checkNotificationPermission();
+        setExactAlarm(permission.canExactAlarm);
+
+        try {
+          const settings = await getAndroidSettings();
+          const battery = await settings.checkBatteryOptimization();
+          setBatterySafe(battery.ignoring);
+        } catch {
+          setBatterySafe(true);
+        }
+
+        await syncAndReschedule();
+      })();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [tasks, taskLogs, isNative, permState]);
+
+  const handleRequestPermission = async () => {
+    if (isNative) {
+      const granted = await requestNotificationPermission();
+      const permission = await checkNotificationPermission();
+      setPermState(granted ? "granted" : "denied");
+      setExactAlarm(permission.canExactAlarm);
+      return;
+    }
+
+    if ("Notification" in window) {
+      const permission = await Notification.requestPermission();
+      setPermState(permission === "granted" ? "granted" : "denied");
+    }
+  };
+
+  const handleOpenAlarmSettings = async () => {
+    try {
+      await openExactAlarmSettings();
+      setTimeout(async () => {
+        const permission = await checkNotificationPermission();
+        setExactAlarm(permission.canExactAlarm);
+      }, 1500);
+    } catch {
+      // Ignore settings navigation failures.
+    }
+  };
+
+  const handleOpenBatterySettings = async () => {
+    try {
+      const settings = await getAndroidSettings();
+      await settings.openBatterySettings();
+      setTimeout(async () => {
+        const battery = await settings.checkBatteryOptimization();
+        setBatterySafe(battery.ignoring);
+      }, 1500);
+    } catch {
+      // Ignore settings navigation failures.
+    }
+  };
+
+  const handleTestNotification = async () => {
+    setTestResult("sending");
+    const ok = await testNotification();
+    setTestResult(ok ? "ok" : "failed");
+    setTimeout(() => setTestResult(null), 5000);
+  };
+
+  useEffect(() => {
+    if (!tasks || permState !== "granted" || isNative) {
+      return;
+    }
+
     const interval = setInterval(() => {
       const now = new Date();
-      const currentDay = now.getDay(); // 0-6
-      const todayStr = now.toISOString().split('T')[0];
-      
-      tasks.forEach(task => {
-        let isTimeReached = false;
-        
-        // Find the target time for today (if applicable)
-        if (task.scheduleType === "custom" && task.customSchedules) {
-          const match = task.customSchedules.find(cs => cs.days.includes(currentDay));
-          if (match && match.time) {
-            const [hours, mins] = match.time.split(':').map(Number);
-            const taskTime = new Date();
-            taskTime.setHours(hours, mins, 0, 0);
-            
-            if (now.getTime() >= taskTime.getTime()) {
-              isTimeReached = true;
-            }
-          }
-        } else if (task.scheduleTime) {
-          const [hours, mins] = task.scheduleTime.split(':').map(Number);
-          const taskTime = new Date();
-          taskTime.setHours(hours, mins, 0, 0);
-          
-          if (now.getTime() >= taskTime.getTime()) {
-            isTimeReached = true;
-          }
+      const todayStr = now.toISOString().split("T")[0];
+
+      tasks.forEach((task) => {
+        if (!taskHasSchedule(task)) {
+          return;
         }
 
-        if (isTimeReached) {
-          db.taskLogs.where({ taskId: task.id }).toArray().then(logs => {
-            const todayStart = new Date().setHours(0, 0, 0, 0);
-            const hasLogToday = logs.some(log => {
-              const logDate = new Date(log.completedAt).setHours(0, 0, 0, 0);
-              return logDate === todayStart;
-            });
-            
-            const notifiedKey = `notified_${task.id}_${todayStr}`;
-            const hasBeenNotified = localStorage.getItem(notifiedKey);
+        const storageKey = `notified_${task.id}_${todayStr}`;
+        if (localStorage.getItem(storageKey)) {
+          return;
+        }
 
-            if (!hasLogToday && !hasBeenNotified) {
-              // Mark as notified in persistent storage so a reload doesn't blast it again
-              localStorage.setItem(notifiedKey, "true");
-              playBeep();
-              
-              getCapacitor().then(cap => {
-                const isNative = cap?.Capacitor.isNativePlatform();
-                
-                if (isNative && cap) {
-                   // Native foreground popup alert
-                   cap.LocalNotifications.schedule({
-                     notifications: [
-                       {
-                         title: `Lembrete: ${task.title}`,
-                         body: task.description || "É hora de executar essa tarefa!",
-                         id: new Date().getTime(),
-                         schedule: { at: new Date() },
-                         extra: { taskId: task.id }
-                       }
-                     ]
-                   });
-                } else {
-                   // PWA Active notification
-                   if ("serviceWorker" in navigator) {
-                     navigator.serviceWorker.ready.then(r => {
-                       r.showNotification(`Lembrete: ${task.title}`, {
-                         body: task.description || "É hora de executar essa tarefa!",
-                         icon: "/icon-192x192.png",
-                         vibrate: [200, 100, 200, 100, 200],
-                         data: { taskId: task.id },
-                         actions: [
-                           { action: 'confirm', title: '✓ Já fiz!' },
-                           { action: 'close', title: 'X Depois' }
-                         ]
-                       } as any).catch(() => {
-                         new Notification(`Lembrete: ${task.title}`, { body: task.description });
-                       });
-                     });
-                   } else {
-                     new Notification(`Lembrete: ${task.title}`, { body: task.description });
-                   }
-                }
+        const [taskTime] = getTaskTimesForDate(task, now);
+        if (!taskTime) {
+          return;
+        }
+
+        const [hours, minutes] = taskTime.split(":").map(Number);
+        const fireAt = new Date();
+        fireAt.setHours(hours, minutes, 0, 0);
+        if (now < fireAt) {
+          return;
+        }
+
+        void db.taskLogs.where({ taskId: task.id }).toArray().then((logs) => {
+          const todayStart = new Date().setHours(0, 0, 0, 0);
+          const alreadyDone = logs.some(
+            (log) => new Date(log.completedAt).setHours(0, 0, 0, 0) === todayStart,
+          );
+
+          if (alreadyDone) {
+            return;
+          }
+
+          localStorage.setItem(storageKey, "true");
+          if ("serviceWorker" in navigator) {
+            void navigator.serviceWorker.ready.then((registration) => {
+              registration.showNotification(`Lembrete: ${task.title}`, {
+                body: task.description || "Hora da tarefa!",
+                icon: "/icon-192x192.png",
               });
-            }
-          });
-        }
+            });
+          }
+        });
       });
-    }, 15000); // More aggressive: check every 15 seconds
+    }, 15000);
 
     return () => clearInterval(interval);
-  }, [tasks, permission]);
+  }, [tasks, permState, isNative]);
 
-  if (permission === "default") {
+  if (permState === "loading") {
+    return null;
+  }
+
+  if (permState === "prompt" || permState === "denied") {
     return (
-      <div className="fixed top-4 left-4 right-4 bg-blue-600 text-white p-4 rounded-2xl shadow-lg flex items-center justify-between z-40 animate-in slide-in-from-top-4">
-        <div className="flex items-center gap-3">
-          <BellRing size={24} className="animate-pulse" />
+      <div className="fixed top-4 left-4 right-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white p-4 rounded-2xl shadow-lg z-40 animate-in slide-in-from-top-4">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+            <BellRing size={22} className="animate-pulse" />
+          </div>
           <div>
-            <p className="font-bold text-sm">Notificações</p>
-            <p className="text-xs text-blue-100">Ative para ser avisado na hora certa.</p>
+            <p className="font-black text-sm">Ativar notificacoes</p>
+            <p className="text-xs text-white/80">
+              {permState === "denied"
+                ? "Permissao negada. Toque para tentar novamente."
+                : "Necessario para receber lembretes mesmo com o app fechado."}
+            </p>
           </div>
         </div>
-        <button onClick={requestPermission} className="bg-white text-blue-600 px-4 py-2 rounded-xl text-sm font-bold shadow-sm whitespace-nowrap">
-          Ativar
+        <button
+          onClick={handleRequestPermission}
+          className="w-full bg-white text-violet-700 py-2.5 rounded-xl text-sm font-black shadow-sm active:scale-95 transition-all"
+        >
+          {permState === "denied" ? "Permitir novamente" : "Permitir notificacoes"}
         </button>
       </div>
     );
   }
 
-  if (permission === "granted" && showIosWarning) {
+  if (permState === "granted" && isNative && (!exactAlarm || !batterySafe)) {
     return (
-      <div className="bg-slate-800 text-slate-200 p-3 text-xs flex items-start gap-2 justify-center opacity-80 fixed top-0 w-full z-40">
-        <Info size={16} className="mt-0.5 flex-shrink-0 text-blue-400" />
-        <p>
-          Dispositivos Apple precisam que você <b>não feche</b> inteiramente o site (deixe a aba aberta em segundo plano) para o alarme tocar no horário.
-        </p>
-        <button onClick={() => setShowIosWarning(false)} className="ml-2 px-2 py-0.5 bg-slate-700 rounded text-slate-300 font-bold hover:bg-slate-600">OK</button>
+      <div className="fixed top-4 left-4 right-4 bg-orange-600 text-white p-4 rounded-2xl shadow-lg flex flex-col gap-3 z-40 animate-in slide-in-from-top-4">
+        <div className="flex items-start gap-3">
+          {!exactAlarm ? (
+            <ShieldAlert size={24} className="flex-shrink-0 mt-0.5" />
+          ) : (
+            <Zap size={24} className="flex-shrink-0 mt-0.5" />
+          )}
+          <div>
+            <p className="font-bold text-sm">Ajustes do Android ainda pendentes</p>
+            <p className="text-xs text-orange-100">
+              {!exactAlarm
+                ? "Sem alarme exato, o S24+ pode atrasar ou ignorar o lembrete."
+                : "A economia de bateria da Samsung pode impedir alarmes em segundo plano."}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {!exactAlarm ? (
+            <button
+              onClick={handleOpenAlarmSettings}
+              className="flex-1 bg-white text-orange-600 py-2 rounded-xl text-xs font-bold"
+            >
+              Autorizar alarme exato
+            </button>
+          ) : (
+            <button
+              onClick={handleOpenBatterySettings}
+              className="flex-1 bg-white text-orange-600 py-2 rounded-xl text-xs font-bold"
+            >
+              Ajustar bateria
+            </button>
+          )}
+          <button
+            onClick={handleTestNotification}
+            className="bg-orange-700 px-3 py-2 rounded-xl text-[10px] font-bold"
+          >
+            Testar
+          </button>
+        </div>
+        {!exactAlarm && !batterySafe ? (
+          <button
+            onClick={handleOpenBatterySettings}
+            className="w-full bg-orange-700/70 py-2 rounded-xl text-xs font-bold"
+          >
+            Depois, liberar economia de bateria
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (permState === "granted" && isNative && testResult !== null) {
+    return (
+      <div
+        className={`fixed top-4 left-4 right-4 p-3 rounded-2xl shadow-lg z-40 text-center text-sm font-bold ${
+          testResult === "ok"
+            ? "bg-emerald-500 text-white"
+            : testResult === "failed"
+              ? "bg-rose-500 text-white"
+              : "bg-slate-700 text-white"
+        }`}
+      >
+        {testResult === "sending"
+          ? "Enviando teste..."
+          : testResult === "ok"
+            ? "Notificacao de teste agendada para 5 segundos"
+            : "Falha ao agendar notificacao de teste"}
       </div>
     );
   }
 
   return null;
 }
+
+export { testNotification };

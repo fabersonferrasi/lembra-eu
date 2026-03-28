@@ -4,6 +4,9 @@ export interface Task {
   id?: number;
   title: string;
   description?: string;
+  category: 'personal' | 'work' | 'health' | 'routine' | 'study';
+  earlyReminderMinutes?: number; // 0, 5, 10, 15, 30
+  startDate: Date;
   scheduleType: 'daily' | 'weekly' | 'monthly' | 'once' | 'custom';
   scheduleTime?: string; // HH:mm format
   daysOfWeek?: number[]; // 0-6 for weekly
@@ -17,6 +20,9 @@ export interface TaskLog {
   taskId: number;
   completedAt: Date;
   isDoubleConfirmed: boolean;
+  occurrenceKey?: string;
+  occurrenceDate?: string;
+  occurrenceTime?: string;
 }
 
 export interface UserContext {
@@ -32,9 +38,14 @@ export class LembraEuDatabase extends Dexie {
 
   constructor() {
     super('LembraEuDB');
-    this.version(1).stores({
-      tasks: '++id, scheduleType', // Primary key and indexed props
+    this.version(2).stores({
+      tasks: '++id, scheduleType, category', // Added category to index
       taskLogs: '++id, taskId, completedAt',
+      users: '++id, role'
+    });
+    this.version(3).stores({
+      tasks: '++id, scheduleType, category',
+      taskLogs: '++id, taskId, completedAt, occurrenceKey, occurrenceDate, occurrenceTime',
       users: '++id, role'
     });
   }

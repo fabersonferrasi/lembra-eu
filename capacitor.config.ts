@@ -6,9 +6,8 @@ const config: CapacitorConfig = {
   webDir: 'out',
   plugins: {
     LocalNotifications: {
-      smallIcon: "ic_stat_icon_config_sample",
+      smallIcon: "ic_notification",
       iconColor: "#6d28d9", // Tailwind violet-700
-      sound: "beep.wav",
     },
   },
 };

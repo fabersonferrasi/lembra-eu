@@ -23,6 +23,10 @@
 # misc
 .DS_Store
 *.pem
+.android-home/
+.gradle-home/
+.git_backup/
+.vscode/
 
 # debug
 npm-debug.log*
